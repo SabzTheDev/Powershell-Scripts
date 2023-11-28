@@ -1,59 +1,57 @@
-﻿
-# $ROOT_SOURCE_PATH = "G:\Graphic novels"
+﻿# Définition du chemin de départ
+$rootPath = "G:\Graphic novels"
+$rootPathMangas = "G:\Graphic novels\Mangas"
+$rootPathZip = "${rootPath}_zip"
 
-# Fonction pour compresser les dossiers dans un chemin donné
-function Compress-Folders ($sourcePath) {
-    # Définition du chemin d'accès au répertoire de destination pour les archives zip
-    $parentPath = Split-Path -Path $sourcePath -Parent
-    $leafDirectory = Split-Path -Path $sourcePath -Leaf
-    $destinationPath = "${parentPath}\${leafDirectory}_zip"
-
-    Write-Host ""
-    Write-Host "Compression des répertoires pour : '$destinationPath'"
-
-    # Parcourt uniquement les dossiers de premier niveau dans le répertoire source
-    Get-ChildItem -LiteralPath $sourcePath -Directory | ForEach-Object {
-        $folder = $_ # Stocke le dossier courant
-
-        # Construction du chemin complet du fichier zip pour chaque dossier
-        $zipFile = "$destinationPath\$($folder.Name).zip"
-
-        # Vérifie si le fichier zip existe déjà
-        if (Test-Path -LiteralPath $zipFile) {
-            Write-Host "Le fichier zip '$zipFile' existe déjà." -ForegroundColor DarkGray
-            return
+# Fonction pour vérifier la présence d'au moins deux images dans un répertoire
+function HasSomeImages($path) {
+    $imageExtensions = @("*.jpg", "*.png", "*.jpeg","*.gif")
+    $count = 0
+    foreach ($ext in $imageExtensions) {
+        $files = Get-ChildItem -LiteralPath $path -Filter $ext -File -ErrorAction SilentlyContinue
+        foreach ($file in $files) {
+            $count++
+            if ($count -ge 2) {
+                return $true
+            }
         }
-
-        # Création de l'archive zip en utilisant 7-Zip
-        Write-Host "Zipping : $($folder.FullName) into $($zipFile)" -ForegroundColor Green
-        & "C:\Program Files (x86)\7-Zip\7z.exe" a -tzip $zipFile "$($folder.FullName)" -r -mx0
     }
-
-     # Vérification des fichiers ZIP sans dossier correspondant
-     Write-Host "Vérification des archives zip orphelines dans '$destinationPath'."
-
-     # Détection des fichiers zip orphelins.
-     if (Test-Path -LiteralPath $destinationPath) {
-         # Parcourt tous les fichiers ZIP dans le répertoire de destination
-         Get-ChildItem -LiteralPath $destinationPath -Filter *.zip | ForEach-Object {
-            # $_.BaseName est le fichier zip sans extension, ce qui correspond aussi au nom du répertoire à vérifier.
-             $matchingFolder = Join-Path -Path $sourcePath -ChildPath $_.BaseName
-
-             # Vérifie si le dossier correspondant existe
-             if (-not (Test-Path -LiteralPath $matchingFolder)) {
-                 Write-Host "Suppression de l'archive orpheline '$($_.FullName)'." -ForegroundColor Red
-                 Remove-Item -LiteralPath $_.FullName
-             }
-         }
-     } else {
-         Write-Host "Le répertoire de destination '$destinationPath' n'existe pas." -ForegroundColor Yellow
-     }
- }
-
-
-# Parcourt tous les sous-répertoires de premier niveau de G:\Graphic novels
-Get-ChildItem -LiteralPath $ROOT_SOURCE_PATH -Directory | ForEach-Object {
-    $subDirPath = $_.FullName
-    Write-Host "Traitement du répertoire : $subDirPath"
-    Compress-Folders -sourcePath $subDirPath
+    return $false
 }
+
+# Fonction pour parcourir l'arborescence récursivement
+function TraverseDirectory($path) {
+    $subFolders = Get-ChildItem -LiteralPath $path -Directory -ErrorAction SilentlyContinue
+    foreach ($folder in $subFolders) {
+        TraverseDirectory $folder.FullName
+    }
+    
+    if (HasSomeImages $path) {
+        Write-Host $path -ForegroundColor Gray
+        $parentPath = Split-Path -Path $path -Parent
+        Write-Host "Parent : $parentPath" -ForegroundColor DarkMagenta
+        $titleDirectory = Split-Path -Path $Path -Leaf
+        $parentLeafDirectory = Split-Path -Path $parentPath -Leaf
+        if ($parentLeafDirectory.StartsWith("Mangas")) {
+           $rootPathZip = "${rootPath}\${parentLeafDirectory}_zip"  # Ex: "G:\Graphic novels\Mangas - Genre_zip"
+           Write-Host "rootPathZip : $rootPathZip" -ForegroundColor Yellow
+        } else { # il y un sous répertoire ex: G:\Graphic novels\Mangas\Author\Album
+            $rootPathZip = "${rootPathMangas}_zip"  
+            Write-Host "rootPathZip : $rootPathZip" -ForegroundColor DarkYellow
+        }
+        
+        $pathToCompress = $path
+        $destinationZip = "${rootPathZip}\${titleDirectory}.zip"
+        # Write-Host $destinationZip
+        # Création de l'archive zip en utilisant 7-Zip
+        Write-Host "Zipping : $pathToCompress" -ForegroundColor Red
+        Write-Host "into $destinationZip" -ForegroundColor Red
+
+        & "C:\Program Files (x86)\7-Zip\7z.exe" a -tzip $destinationZip $pathToCompress -r -mx0 -bso0
+    } else {
+        Write-Host $path -ForegroundColor White
+    }
+}
+
+# Lancement du script
+TraverseDirectory $rootPathMangas
