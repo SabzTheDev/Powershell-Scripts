@@ -20,7 +20,7 @@ function HasSomeImages($path) {
 }
 
 # Fonction pour parcourir l'arborescence récursivement
-function TraverseDirectory($path) {
+function TraverseDirectory($path) {  
     $subFolders = Get-ChildItem -LiteralPath $path -Directory -ErrorAction SilentlyContinue
     foreach ($folder in $subFolders) {
         TraverseDirectory $folder.FullName
