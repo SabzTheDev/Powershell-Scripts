@@ -1,41 +1,51 @@
 ﻿
 # Execute le traitement sur l'arborescence.
-function ProcessTree([string]$_targetPath) {
-    $global:rootPath = Split-Path -Path $_targetPath -Parent
-    $global:mediaType = Split-Path -Path $_targetPath -Leaf
-    $rootPathTree = "${rootPath}\${mediaType}"
+function ProcessTree([string]$rootPathTree) {
     TraverseDirectory $rootPathTree
 }
 
-# Fonction pour vérifier la présence d'au moins deux images dans un répertoire
-function HasSomeImages($path) {
-    $imageExtensions = @("*.jpg", "*.png", "*.jpeg", "*.gif")
-    $count = (Get-ChildItem -LiteralPath $path -Include $imageExtensions -File -ErrorAction SilentlyContinue).Count
-    return $count -ge 2
+# Verifie qu'un répertoire ne contient pas de fichier (mais il doit contenir des répertoires)
+function Test-DirectoryIsParent([string]$directoryPath) {
+    $hasFiles = Get-ChildItem -Path $directoryPath -File | Select-Object -First 1
+    $hasSubdirectories = Get-ChildItem -Path $directoryPath -Directory | Select-Object -First 1
+    $hasNoFiles = $null -eq $hasFiles
+    $hasAtLeastOneSubdirectory = $null -ne $hasSubdirectories
+    return $hasNoFiles -and $hasAtLeastOneSubdirectory
 }
+
+# Déduit le chemin de destination à partir du chemin courant et du répertoire racine.
+# Ex : 
+#  currentPath = G:\Graphic novels\Mangas\Nukaji Wizakun - Tropical Bitch
+#  rootPath = G:\Graphic novels\Mangas
+# return G:\Graphic novels\Mangas_zip\Nukaji Wizakun - Tropical Bitch
+function Convert-PathToZipPath ([string]$currentPath, [string]$rootPathTree) {
+    $searchString= $rootPathTree
+    $replaceString= "${rootPathTree}_zip" # On suffixe le répertoire racine avec _zip
+    if ($currentPath.StartsWith($rootPathTree)) {
+        return $currentPath.Replace($searchString, $replaceString)
+    } else {
+        throw "Le chemin fourni ne commence pas par le chemin de base attendu."
+    }
+}
+
 
 # Fonction pour parcourir les sous répertoires de 1er niveau de l'arborescence.
 # Les répertoires de 1er niveau son zippés, les répertoires qui commencent par _ sont explorés récursivement.
-function TraverseDirectory([string]$path, [string]$optionalParentName='') {  
-    $subFolders = Get-ChildItem -LiteralPath $path -Directory -ErrorAction SilentlyContinue
+function TraverseDirectory([string]$referenceTree) {  
+    $subFolders = Get-ChildItem -LiteralPath $referenceTree -Directory -ErrorAction SilentlyContinue
     foreach ($subFolder in $subFolders) {
         $subFolderPath = $subFolder.FullName
-        # Lorsqu'un réprtoire commence par _, ca veut dire qu'il faut l'explorer et intégrer ce répertoire au path de destination.
-        if ($subFolder.Name.StartsWith("_")) {
-            $parentNameToPass = $subFolder.Name.Substring(1)  # Supprime le premier caractère "_"
+        if (Test-DirectoryIsParent $subFolderPath) {
             Write-Host "Exploration du dossier: $($subFolder.Name)" -ForegroundColor Red
-            TraverseDirectory $subFolderPath  $parentNameToPass
+        
+            TraverseDirectory $subFolderPath
             continue  # Passe à la prochaine itération de la boucle
         }
-        $destinationPath = "${rootPathTree}_zip"  
+        $destinationPath = Convert-PathToZipPath -currentPath $subFolderPath -rootPathTree $rootPathTree
         $pathToCompress = $subFolderPath
-        if ($optionalParentName -eq '') {
-            $destinationZip = "${destinationPath}\${subFolder}.zip"
-        } else {
-            $destinationZip = "${destinationPath}\${optionalParentName}\${subFolder}.zip"
-        }        
+        $destinationZip = "${destinationPath}.zip"
         Write-Host "Zipping : $destinationZip"
-        Write-Host $subFolder -ForegroundColor DarkYellow -NoNewline
+        Write-Host $subFolder -ForegroundColor Yellow -NoNewline
         Write-Host " zipped" -ForegroundColor Green
         & "C:\Program Files (x86)\7-Zip\7z.exe" a -tzip $destinationZip $pathToCompress -r -mx0 -bso0
     }
